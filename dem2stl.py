@@ -39,7 +39,7 @@ def main():
     parser.add_argument('--b-ratio', dest='b_ratio', action='store',
             help='ratio for blue pixels', default=-0.002, type=float)
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
-            help='pixel to world unit ratio', default=1, type=float)
+            help='pixel to world unit ratio', default=0, type=float)
     parser.add_argument('--resample-size', dest='resample_size', action='store',
             help='resample the source image by averaging squares of this size (px)', type=int, default=1)
     parser.add_argument('--debug', dest='debug', action='store_true',
@@ -83,6 +83,12 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
     x_dim, y_dim = im.size
     logging.debug("creating map %dx%d" % (x_dim, y_dim))
     values = numpy.empty((x_dim, y_dim))
+
+    # Store the min and max heights as we scan through the image.  This way
+    # we can put the output into a base so that negative heights don't go through
+    # the base, etc
+    min_z = 0
+    max_z = 0
  
     for x in range(0,x_dim):
         for y in range(y_dim -1,0,-1):
@@ -90,10 +96,15 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
             
             # r+g+b = meters * scale factor(???)
             # flip y axis
-            values[x][y_dim-y] = (r*r_ratio)+(g*g_ratio)+(b*b_ratio)
+            z = (r*r_ratio)+(g*g_ratio)+(b*b_ratio)
+            min_z = min(min_z, z)
+            max_z = max(max_z, z)
+            values[x][y_dim-y] = z
 
-    if (resample_size > 1):
+    if (resample_size > 0):
         values = resample(values, resample_size)
+
+    logging.debug("min height %f max height %f" % (min_z, max_z))
 
     return values
 
@@ -193,10 +204,8 @@ def convert_height_map(height_map, output_filename, pixel_ratio):
             link_pixel(output_file, height_map, pixel_ratio, x, y)
 
     # link the N, S, E, W sides to zero height (the previously unprocessed border)
-    
+    stich_base(output_file, height_map)
     # N
-    for x in range(1, len(height_map)):
-        link_floor_x(output_file, height_map, x)
     
 
     # S
@@ -210,28 +219,42 @@ def convert_height_map(height_map, output_filename, pixel_ratio):
 
     stl_footer(output_file)
 
-def link_floor_x(output_file, height_map, x):
-
-    coords = {
-        "n":    {"x": x,    "y": y+1,   "z": height_map[x][y+1]},
-        "ne":   {"x": x+1,  "y": y+1,   "z": height_map[x+1][y+1]},
-        "e":    {"x": x+1,  "y": y,     "z": height_map[x+1][y]},
-        "se":   {"x": x+1,  "y": y-1,   "z": height_map[x+1][y-1]},
-        "s":    {"x": x,    "y": y-1,   "z": height_map[x][y-1]},
-        "sw":   {"x": x-1,  "y": y-1,   "z": height_map[x-1][y-1]},
-        "w":    {"x": x-1,  "y": y,     "z": height_map[x-1][y]},
-        "nw":   {"x": x-1,  "y": y+1,   "z": height_map[x-1][y+1]},
-        "p":    {"x": x,    "y": y,     "z": height_map[x][y]},
-    }
-
-
-    # single triangle
-
-    # double triangles
-#    for (i in range(1,len(coords) - 1):
-        
-    # single triangle
+def stich_base(output_file, height_map):
+    """
+    Stich the base by drawing triangles anchoring the top to the base
     
+    .  
+
+       .  
+
+          .
+    
+    .  .  .
+
+    """
+
+    # N
+    z_min = 0
+    for x in range (1, len(height_map)):
+        v = height_map[x][0]
+        
+
+        # FIXME only 1 triangle works, need to use scale_pixel function too ...
+        t1 = {
+            "xs": [x-1, x-1, x],
+            "ys": [0,0,0],
+            "zs": [z_min, height_map[x-1][0], height_map[x][0]],
+        }
+
+        t2 = {
+            "xs": [x-1, x-1, x],
+            "ys": [0,0,0],
+            "zs": [z_min, z_min, height_map[x][0]],
+        }
+
+        facet(output_file, t1)
+        facet(output_file, t2)
+
 
 def facet(output_file, triangle):
     """
