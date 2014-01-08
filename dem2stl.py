@@ -21,6 +21,9 @@ import argparse
 import Image
 import numpy
 import logging
+import math
+
+
 
 def main():
     logging.info("DEM TO STL")
@@ -37,19 +40,30 @@ def main():
             help='ratio for blue pixels', default=-0.05, type=float)
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
             help='pixel to world unit ratio', default=1, type=float)
+    parser.add_argument('--resample-size', dest='resample_size', action='store',
+            help='resample the source image by averaging squares of this size (px)', type=int, default=1)
+    parser.add_argument('--debug', dest='debug', action='store_true',
+            help='enable debug messages', default=False)
 
     args = parser.parse_args()
+    
+    if (args.debug):
+        print("enabling debug mode...")
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+        logging.debug("...debug mode enabled")
+
     logging.debug("RGB and pixel scale ratios:  r=%f g=%f b=%f p=%f" % 
         (args.r_ratio, args.g_ratio, args.b_ratio, args.pixel_ratio)) 
 
     convert_height_map(
-        height_map(args.input_file, args.r_ratio, args.g_ratio, args.b_ratio), 
+        height_map(args.input_file, args.r_ratio, args.g_ratio, args.b_ratio, args.resample_size), 
         args.output_file, args.pixel_ratio)
        
  
        
 
-def height_map(input_file, r_ratio, g_ratio, b_ratio):
+def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
     """
     Convert the image pixel values to a 2D array of heights
 
@@ -77,8 +91,64 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio):
             # r+g+b = meters * scale factor(???)
             values[x][y_dim-y] = (r*r_ratio)+(g*g_ratio)+(b*-b_ratio)
 
+    if (resample_size > 1):
+        values = resample(values, resample_size)
+
     return values
 
+def average(values, resample_size, source_x_dim, source_y_dim, resampled_x, resampled_y):
+    """
+     resample_size indicates the border around each pixel that will be averaged
+     eg for a resample_size of 2, the illustration below shows the pixels that 
+     will be averaged for pixel P
+
+     X X X X X
+     X X X X X
+     X X P X X
+     X X X X X
+     X X X X X
+    """
+    
+    resample_squared = math.pow(resample_size * 2 + 1,2)
+    logging.debug("resample size %d will average squares of %d pixels" % (resample_size, resample_squared))
+
+    source_x = resampled_x * resample_size
+    source_y = resampled_y * resample_size
+
+    # find the x,y values for each corner of the square illustrated above
+    x_min = source_x - resample_size
+    x_max = source_x + resample_size
+    y_min = source_y - resample_size
+    y_max = source_y + resample_size
+    
+    # take the mean of the pixels indicated by resample size
+    v=0
+    for x in range(x_min, x_max):
+        for y in range(y_min, y_max):
+            v += values[x][y]     
+
+    v = v / resample_squared
+    return v
+
+
+def resample(values, resample_size):
+    source_x_dim = len(values)
+    source_y_dim = len(values[0])
+
+    # calculate resampled image size.  Round down (throw away) any pixels that
+    # dont fit neatly
+    x_dim = int(round(source_x_dim / resample_size))
+    y_dim = int(round(source_y_dim / resample_size))
+
+    logging.debug("resample to %f x %f" % (x_dim, y_dim))
+
+    px_count = resample_size * resample_size
+    resampled = numpy.empty((x_dim, y_dim))
+    for x in range(0, x_dim):
+        for y in range(0, y_dim):
+            resampled[x][y]=average(values, resample_size, source_x_dim, source_y_dim, x, y)
+
+    return resampled
 
 def stl_header(output_file):
     output_file.write("solid DEM\n")
