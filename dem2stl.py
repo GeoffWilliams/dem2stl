@@ -15,14 +15,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import argparse
 import Image
 import numpy
+import logging
 
 def main():
-    print("DEM TO STL")
+    logging.info("DEM TO STL")
     parser = argparse.ArgumentParser(description='DEM (Digital Elevation Model) to STL (3D printer) conversion')
     parser.add_argument('--input-file', dest='input_file', action='store',
             help='filename for input file', required=True)
@@ -37,8 +38,10 @@ def main():
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
             help='pixel to world unit ratio', default=1, type=float)
 
-
     args = parser.parse_args()
+    logging.debug("RGB and pixel scale ratios:  r=%f g=%f b=%f p=%f" % 
+        (args.r_ratio, args.g_ratio, args.b_ratio, args.pixel_ratio)) 
+
     convert_height_map(
         height_map(args.input_file, args.r_ratio, args.g_ratio, args.b_ratio), 
         args.output_file, args.pixel_ratio)
@@ -62,10 +65,9 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio):
     """
     im = Image.open(input_file) #Can be many different formats.
     pix = im.load()
-    print im.size #Get the width and hight of the image for iterating over
 
     x_dim, y_dim = im.size
-    print ("creating map %dx%d" % (x_dim, y_dim))
+    logging.debug("creating map %dx%d" % (x_dim, y_dim))
     values = numpy.empty((x_dim, y_dim))
  
     for x in range(0,x_dim):
@@ -109,8 +111,8 @@ def convert_height_map(height_map, output_filename, pixel_ratio):
     max_x = len(height_map) -1
     max_y = len(height_map[0]) - 1
 
-    max_x = 3
-    max_y = 3
+    #max_x = 3
+    #max_y = 3
 
     for x in range(1, max_x):
         for y in range(1, max_y):
@@ -179,11 +181,11 @@ def facet(output_file, triangle):
     # extra credit - normal should be of unit length..
 
 
-    output_file.write("facet normal %d %d %d\n" % (nx, ny, nz))
+    output_file.write("facet normal %f %f %f\n" % (nx, ny, nz))
     output_file.write("\touter loop\n")
-    output_file.write("\t\tvertex %d %d %d\n" % (triangle["xs"][0], triangle["ys"][0], triangle["zs"][0]))
-    output_file.write("\t\tvertex %d %d %d\n" % (triangle["xs"][1], triangle["ys"][1], triangle["zs"][1]))
-    output_file.write("\t\tvertex %d %d %d\n" % (triangle["xs"][2], triangle["ys"][2], triangle["zs"][2]))
+    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][0], triangle["ys"][0], triangle["zs"][0]))
+    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][1], triangle["ys"][1], triangle["zs"][1]))
+    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][2], triangle["ys"][2], triangle["zs"][2]))
     output_file.write("\tendloop\n")
     output_file.write("endfacet\n")
 
