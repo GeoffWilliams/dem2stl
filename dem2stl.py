@@ -33,11 +33,11 @@ def main():
     parser.add_argument('--output-file', dest='output_file', action='store',
             help='filename for output file', required=True)
     parser.add_argument('--r-ratio', dest='r_ratio', action='store',
-            help='ratio for red pixels', default=0.05, type=float)
+            help='ratio for red pixels', default=0.002, type=float)
     parser.add_argument('--g-ratio', dest='g_ratio', action='store',
-            help='ratio for green pixels', default=0.01, type=float)
+            help='ratio for green pixels', default=0.001, type=float)
     parser.add_argument('--b-ratio', dest='b_ratio', action='store',
-            help='ratio for blue pixels', default=-0.05, type=float)
+            help='ratio for blue pixels', default=-0.002, type=float)
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
             help='pixel to world unit ratio', default=1, type=float)
     parser.add_argument('--resample-size', dest='resample_size', action='store',
@@ -89,7 +89,8 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
             (r,g,b) = pix[x,y]
             
             # r+g+b = meters * scale factor(???)
-            values[x][y_dim-y] = (r*r_ratio)+(g*g_ratio)+(b*-b_ratio)
+            # flip y axis
+            values[x][y_dim-y] = (r*r_ratio)+(g*g_ratio)+(b*b_ratio)
 
     if (resample_size > 1):
         values = resample(values, resample_size)
@@ -109,17 +110,18 @@ def average(values, resample_size, source_x_dim, source_y_dim, resampled_x, resa
      X X X X X
     """
     
-    resample_squared = math.pow(resample_size * 2 + 1,2)
+    step = resample_size * 2 + 1
+    resample_squared = math.pow(step,2)
     logging.debug("resample size %d will average squares of %d pixels" % (resample_size, resample_squared))
 
-    source_x = resampled_x * resample_size
-    source_y = resampled_y * resample_size
+    source_x = resampled_x * step
+    source_y = resampled_y * step
 
     # find the x,y values for each corner of the square illustrated above
-    x_min = source_x - resample_size
-    x_max = source_x + resample_size
-    y_min = source_y - resample_size
-    y_max = source_y + resample_size
+    x_min = source_x
+    x_max = source_x + step
+    y_min = source_y
+    y_max = source_y + step
     
     # take the mean of the pixels indicated by resample size
     v=0
@@ -137,8 +139,10 @@ def resample(values, resample_size):
 
     # calculate resampled image size.  Round down (throw away) any pixels that
     # dont fit neatly
-    x_dim = int(round(source_x_dim / resample_size))
-    y_dim = int(round(source_y_dim / resample_size))
+    step = resample_size * 2 + 1
+    
+    x_dim = int(round(source_x_dim / step))
+    y_dim = int(round(source_y_dim / step))
 
     logging.debug("resample to %f x %f" % (x_dim, y_dim))
 
