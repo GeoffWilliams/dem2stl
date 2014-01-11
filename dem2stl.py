@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #    
 # DEM (Digital Elevation Model) to STL (3d printer)
-# Copyright (C) 2014 Geoff Williams<geoff@geoffwilliams.me.uk>
+# Copyright (C) 2014 Geoff Williams <geoff@geoffwilliams.me.uk>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -34,6 +34,7 @@ RESAMPLE_SQUARED=0
 MODEL_DEPTH=6
 Z_MIN=0
 Z_MAX=0
+LINEAR_RATIO=3
 
 def main():
     global R_RATIO
@@ -44,6 +45,7 @@ def main():
     global RESAMPLE_STEP
     global RESAMPLE_SQUARED
     global MODEL_DEPTH
+    global LINEAR_RATIO
 
     logging.info("DEM TO STL")
     parser = argparse.ArgumentParser(description='DEM (Digital Elevation Model) to STL (3D printer) conversion')
@@ -66,6 +68,10 @@ def main():
     parser.add_argument('--b-ratio', dest='b_ratio', action='store',
             help='ratio for blue pixels', default=B_RATIO, type=float)
     
+    # linear ratio
+    parser.add_argument('--linear-ratio', dest='linear_ratio', action='store',
+            help='linear scaling to apply to whole map', default=LINEAR_RATIO, type=float)
+
     # pixel ratio
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
             help='pixel to world unit ratio', default=PIXEL_RATIO, type=float)
@@ -91,6 +97,7 @@ def main():
     RESAMPLE_STEP = RESAMPLE_SIZE * 2 + 1
     RESAMPLE_SQUARED = math.pow(RESAMPLE_STEP,2)
     MODEL_DEPTH = args.model_depth
+    LINEAR_RATIO = args.linear_ratio
 
     if (args.debug):
         print("enabling debug mode...")
@@ -142,7 +149,7 @@ def height_map(input_file):
             
             # r+g+b = meters * scale factor(???)
             # flip y axis
-            z = (r * R_RATIO)+(g * G_RATIO)+(b * B_RATIO)
+            z = ((r * R_RATIO)+(g * G_RATIO)+(b * B_RATIO)) * LINEAR_RATIO
             Z_MIN = min(Z_MIN, z)
             Z_MAX = max(Z_MAX, z)
             values[x][y_dim-y] = z
@@ -233,8 +240,6 @@ def convert_height_map(height_map, output_filename):
     max_x = len(height_map) -1
     max_y = len(height_map[0]) - 1
 
-    #max_x = 3
-    #max_y = 3
 
     for x in range(1, max_x):
         for y in range(1, max_y):
@@ -242,17 +247,6 @@ def convert_height_map(height_map, output_filename):
 
     # link the N, S, E, W sides to zero height (the previously unprocessed border)
     stitch_base(output_file, height_map)
-    # N
-    
-
-    # S
-
-    # E
-
-    # W
-
-    # link the bottom sides to create a solid
-    
 
     stl_footer(output_file)
 
