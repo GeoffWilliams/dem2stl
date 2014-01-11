@@ -27,7 +27,7 @@ import math
 R_RATIO=0.002
 G_RATIO=0.001
 B_RATIO=-0.002
-PIXEL_RATIO=0
+PIXEL_RATIO=1
 RESAMPLE_SIZE=1
 RESAMPLE_STEP=0
 RESAMPLE_SQUARED=0
@@ -342,6 +342,19 @@ def stitch_base(output_file, height_map):
             "ys": [sy, sym1, sy],
             "zs": [height_map[x_max][y], base, base],
         })
+
+    # close the shape with two triangles on the bottom
+    facet(output_file, {
+        "xs": [x_min, x_min, sx_max],
+        "ys": [y_min, sy_max, sy_max],
+        "zs": [base, base, base],
+    })
+
+    facet(output_file, {
+        "xs": [x_min, sx_max, sx_max],
+        "ys": [y_min, sy_max, y_min],
+        "zs": [base, base, base],
+    })
 
 
 
