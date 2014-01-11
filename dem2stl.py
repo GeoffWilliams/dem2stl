@@ -24,29 +24,74 @@ import logging
 import math
 
 
+R_RATIO=0.002
+G_RATIO=0.001
+B_RATIO=-0.002
+PIXEL_RATIO=0
+RESAMPLE_SIZE=1
+RESAMPLE_STEP=0
+RESAMPLE_SQUARED=0
+MODEL_DEPTH=6
+Z_MIN=0
+Z_MAX=0
 
 def main():
+    global R_RATIO
+    global G_RATIO
+    global B_RATIO
+    global PIXEL_RATIO
+    global RESAMPLE_SIZE
+    global RESAMPLE_STEP
+    global RESAMPLE_SQUARED
+    global MODEL_DEPTH
+
     logging.info("DEM TO STL")
     parser = argparse.ArgumentParser(description='DEM (Digital Elevation Model) to STL (3D printer) conversion')
+    # input file
     parser.add_argument('--input-file', dest='input_file', action='store',
             help='filename for input file', required=True)
+    # output file
     parser.add_argument('--output-file', dest='output_file', action='store',
             help='filename for output file', required=True)
+    
+    # r ratio
     parser.add_argument('--r-ratio', dest='r_ratio', action='store',
-            help='ratio for red pixels', default=0.002, type=float)
+            help='ratio for red pixels', default=R_RATIO, type=float)
+    
+    # g ratio
     parser.add_argument('--g-ratio', dest='g_ratio', action='store',
-            help='ratio for green pixels', default=0.001, type=float)
+            help='ratio for green pixels', default=G_RATIO, type=float)
+    
+    # b ratio
     parser.add_argument('--b-ratio', dest='b_ratio', action='store',
-            help='ratio for blue pixels', default=-0.002, type=float)
+            help='ratio for blue pixels', default=B_RATIO, type=float)
+    
+    # pixel ratio
     parser.add_argument('--pixel-ratio', dest='pixel_ratio', action='store',
-            help='pixel to world unit ratio', default=0, type=float)
+            help='pixel to world unit ratio', default=PIXEL_RATIO, type=float)
+    
+    # resample size
     parser.add_argument('--resample-size', dest='resample_size', action='store',
-            help='resample the source image by averaging squares of this size (px)', type=int, default=1)
+            help='resample the source image by averaging squares of this size (px)', type=int, default=RESAMPLE_SIZE)
+    
+    # model depth
+    parser.add_argument('--model-depth', dest='model_depth', action='store',
+            help='minimum depth of model', type=int, default=MODEL_DEPTH)
+
+    # debug mode
     parser.add_argument('--debug', dest='debug', action='store_true',
             help='enable debug messages', default=False)
 
     args = parser.parse_args()
-    
+    R_RATIO = args.r_ratio
+    G_RATIO = args.g_ratio
+    B_RATIO = args.b_ratio
+    PIXEL_RATIO = args.pixel_ratio
+    RESAMPLE_SIZE = args.resample_size    
+    RESAMPLE_STEP = RESAMPLE_SIZE * 2 + 1
+    RESAMPLE_SQUARED = math.pow(RESAMPLE_STEP,2)
+    MODEL_DEPTH = args.model_depth
+
     if (args.debug):
         print("enabling debug mode...")
         root_logger = logging.getLogger()
@@ -54,16 +99,16 @@ def main():
         logging.debug("...debug mode enabled")
 
     logging.debug("RGB and pixel scale ratios:  r=%f g=%f b=%f p=%f" % 
-        (args.r_ratio, args.g_ratio, args.b_ratio, args.pixel_ratio)) 
+        (R_RATIO, G_RATIO, B_RATIO, PIXEL_RATIO)) 
 
     convert_height_map(
-        height_map(args.input_file, args.r_ratio, args.g_ratio, args.b_ratio, args.resample_size), 
-        args.output_file, args.pixel_ratio)
+        height_map(args.input_file), 
+        args.output_file)
        
  
        
 
-def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
+def height_map(input_file):
     """
     Convert the image pixel values to a 2D array of heights
 
@@ -77,6 +122,9 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
     | y+
     v
     """
+    global Z_MIN
+    global Z_MAX
+
     im = Image.open(input_file) #Can be many different formats.
     pix = im.load()
 
@@ -87,8 +135,6 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
     # Store the min and max heights as we scan through the image.  This way
     # we can put the output into a base so that negative heights don't go through
     # the base, etc
-    min_z = 0
-    max_z = 0
  
     for x in range(0,x_dim):
         for y in range(y_dim -1,0,-1):
@@ -96,19 +142,19 @@ def height_map(input_file, r_ratio, g_ratio, b_ratio, resample_size):
             
             # r+g+b = meters * scale factor(???)
             # flip y axis
-            z = (r*r_ratio)+(g*g_ratio)+(b*b_ratio)
-            min_z = min(min_z, z)
-            max_z = max(max_z, z)
+            z = (r * R_RATIO)+(g * G_RATIO)+(b * B_RATIO)
+            Z_MIN = min(Z_MIN, z)
+            Z_MAX = max(Z_MAX, z)
             values[x][y_dim-y] = z
 
-    if (resample_size > 0):
-        values = resample(values, resample_size)
+    if (RESAMPLE_SIZE > 0):
+        values = resample(values)
 
-    logging.debug("min height %f max height %f" % (min_z, max_z))
+    logging.debug("min height %f max height %f" % (Z_MIN, Z_MAX))
 
     return values
 
-def average(values, resample_size, source_x_dim, source_y_dim, resampled_x, resampled_y):
+def average(values, source_x_dim, source_y_dim, resampled_x, resampled_y):
     """
      resample_size indicates the border around each pixel that will be averaged
      eg for a resample_size of 2, the illustration below shows the pixels that 
@@ -121,18 +167,14 @@ def average(values, resample_size, source_x_dim, source_y_dim, resampled_x, resa
      X X X X X
     """
     
-    step = resample_size * 2 + 1
-    resample_squared = math.pow(step,2)
-    logging.debug("resample size %d will average squares of %d pixels" % (resample_size, resample_squared))
-
-    source_x = resampled_x * step
-    source_y = resampled_y * step
+    source_x = resampled_x * RESAMPLE_STEP
+    source_y = resampled_y * RESAMPLE_STEP
 
     # find the x,y values for each corner of the square illustrated above
     x_min = source_x
-    x_max = source_x + step
+    x_max = source_x + RESAMPLE_STEP
     y_min = source_y
-    y_max = source_y + step
+    y_max = source_y + RESAMPLE_STEP
     
     # take the mean of the pixels indicated by resample size
     v=0
@@ -140,28 +182,23 @@ def average(values, resample_size, source_x_dim, source_y_dim, resampled_x, resa
         for y in range(y_min, y_max):
             v += values[x][y]     
 
-    v = v / resample_squared
+    v = v / RESAMPLE_SQUARED
     return v
 
 
-def resample(values, resample_size):
+def resample(values):
     source_x_dim = len(values)
     source_y_dim = len(values[0])
 
-    # calculate resampled image size.  Round down (throw away) any pixels that
-    # dont fit neatly
-    step = resample_size * 2 + 1
-    
-    x_dim = int(round(source_x_dim / step))
-    y_dim = int(round(source_y_dim / step))
+    x_dim = int(round(source_x_dim / RESAMPLE_STEP))
+    y_dim = int(round(source_y_dim / RESAMPLE_STEP))
 
     logging.debug("resample to %f x %f" % (x_dim, y_dim))
 
-    px_count = resample_size * resample_size
     resampled = numpy.empty((x_dim, y_dim))
     for x in range(0, x_dim):
         for y in range(0, y_dim):
-            resampled[x][y]=average(values, resample_size, source_x_dim, source_y_dim, x, y)
+            resampled[x][y]=average(values, source_x_dim, source_y_dim, x, y)
 
     return resampled
 
@@ -172,7 +209,7 @@ def stl_footer(output_file):
     output_file.write("endsolid\n")
 
 
-def convert_height_map(height_map, output_filename, pixel_ratio):
+def convert_height_map(height_map, output_filename):
     """
     Convert height map to STL data
 
@@ -201,10 +238,10 @@ def convert_height_map(height_map, output_filename, pixel_ratio):
 
     for x in range(1, max_x):
         for y in range(1, max_y):
-            link_pixel(output_file, height_map, pixel_ratio, x, y)
+            link_pixel(output_file, height_map, x, y)
 
     # link the N, S, E, W sides to zero height (the previously unprocessed border)
-    stich_base(output_file, height_map)
+    stitch_base(output_file, height_map)
     # N
     
 
@@ -219,10 +256,10 @@ def convert_height_map(height_map, output_filename, pixel_ratio):
 
     stl_footer(output_file)
 
-def stich_base(output_file, height_map):
+def stitch_base(output_file, height_map):
     """
     Stich the base by drawing triangles anchoring the top to the base
-    
+    using a double triangle for each n - 1 pair of vertices
     .  
 
        .  
@@ -233,27 +270,79 @@ def stich_base(output_file, height_map):
 
     """
 
-    # N
-    z_min = 0
+    base = 0 - MODEL_DEPTH - Z_MIN   
+
+    x_min = 0    
+    x_max = len(height_map) -1 
+    y_min = 0
+    y_max = len(height_map[0]) -1
+
+
+    sx_max = scale_pixel(x_max)
+    sy_max = scale_pixel(y_max)
+
+    # N and S (4x triangles)
     for x in range (1, len(height_map)):
-        v = height_map[x][0]
-        
+        sxm1 = scale_pixel(x-1)
+        sx = scale_pixel(x)
+ 
+        # N
+        facet(output_file, {
+            "xs": [sx, sx, sxm1],
+            "ys": [sy_max, sy_max, sy_max],
+            "zs": [height_map[x][y_max], base, base],
+        })
+        facet(output_file, {
+            "xs": [sx, sxm1, sxm1],
+            "ys": [sy_max, sy_max, sy_max],
+            "zs": [height_map[x][y_max], base, height_map[x-1][y_max]],
+        })
 
-        # FIXME only 1 triangle works, need to use scale_pixel function too ...
-        t1 = {
-            "xs": [x-1, x-1, x],
-            "ys": [0,0,0],
-            "zs": [z_min, height_map[x-1][0], height_map[x][0]],
-        }
+        # S
+        facet(output_file, {
+            "xs": [sx, sxm1, sxm1],
+            "ys": [y_min, y_min, y_min],
+            "zs": [height_map[x][y_min], height_map[x-1][y_min], base]
+        })
+        facet(output_file, {
+            "xs": [sx, sxm1, sx],
+            "ys": [y_min, y_min, y_min],
+            "zs": [height_map[x][y_min], base, base],
+        })
 
-        t2 = {
-            "xs": [x-1, x-1, x],
-            "ys": [0,0,0],
-            "zs": [z_min, z_min, height_map[x][0]],
-        }
 
-        facet(output_file, t1)
-        facet(output_file, t2)
+    
+    # W and E
+    for y in range (1, len(height_map[0])):
+
+        sym1 = scale_pixel(y-1)
+        sy = scale_pixel(y)
+
+        # W
+        facet(output_file, {
+            "xs": [x_min, x_min, x_min],
+            "ys": [sy, sy, sym1],
+            "zs": [height_map[x_min][y], base, base],
+        })
+
+        facet(output_file, {
+            "xs": [x_min, x_min, x_min],
+            "ys": [sy, sym1, sym1],
+            "zs": [height_map[x_min][y], base, height_map[x_min][y-1]],
+        })
+
+        # E
+        facet(output_file, {
+            "xs": [sx_max, sx_max, sx_max],
+            "ys": [sy, sym1, sym1],
+            "zs": [height_map[x_max][y], height_map[x_max][y-1], base],
+        })
+        facet(output_file, {
+            "xs": [sx_max, sx_max, sx_max],
+            "ys": [sy, sym1, sy],
+            "zs": [height_map[x_max][y], base, base],
+        })
+
 
 
 def facet(output_file, triangle):
@@ -297,11 +386,10 @@ def triangle(coords, k1, k2, k3):
         "zs": [coords[k1]["z"], coords[k2]["z"], coords[k3]["z"]],
     }
 
-def scale_pixel(pixel_ratio, n):
-    return pixel_ratio * n
+def scale_pixel(n):
+    return n * PIXEL_RATIO
 
-
-def link_pixel(output_file, height_map, pixel_ratio, x, y):
+def link_pixel(output_file, height_map, x, y):
     """
     create 8 triangles from this pixel to the surrounding pixels
     
@@ -311,18 +399,18 @@ def link_pixel(output_file, height_map, pixel_ratio, x, y):
     # compute the coordinates for reference later
     
     # scaled x - 1
-    sxm1 = scale_pixel(pixel_ratio, x-1)
+    sxm1 = scale_pixel(x-1)
     # scaled x
-    sx = scale_pixel(pixel_ratio, x)
+    sx = scale_pixel(x)
     # scaled x + 1
-    sxp1 = scale_pixel(pixel_ratio, x+1)
+    sxp1 = scale_pixel(x+1)
     
     # scaled y - 1
-    sym1 = scale_pixel(pixel_ratio, y-1)
+    sym1 = scale_pixel(y-1)
     # scaled y
-    sy = scale_pixel(pixel_ratio, y)
+    sy = scale_pixel(y)
     # scaled y + 1
-    syp1 = scale_pixel(pixel_ratio, y+1)
+    syp1 = scale_pixel(y+1)
 
     coords = {
         "n":    {"x": sx,    "y": syp1,   "z": height_map[x][y+1]},
