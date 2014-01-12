@@ -152,15 +152,17 @@ def height_map(input_file):
     # the base, etc
  
     for x in range(0,x_dim):
-        for y in range(y_dim -1,0,-1):
+        for y in range(0, y_dim): # -1,-1 ,-1):
             (r,g,b) = pix[x,y]
             
             # r+g+b = meters * scale factor(???)
-            # flip y axis
+            
             z = ((r * R_RATIO)+(g * G_RATIO)+(b * B_RATIO)) * LINEAR_RATIO
             Z_MIN = min(Z_MIN, z)
             Z_MAX = max(Z_MAX, z)
-            values[x][y_dim-y] = z
+            
+            # ***flip y axis between read above and store below ***
+            values[x][y_dim - y - 1] = z
 
     if (RESAMPLE_SIZE > 0):
         values = resample(values)
@@ -244,13 +246,8 @@ def convert_height_map(height_map, output_filename):
 
     stl_header(output_file)
 
-    # process each inner pixel leaving a 1px border of unprocessed pixels
-    max_x = len(height_map) -1
-    max_y = len(height_map[0]) - 1
-
-
-    max_x = 3
-    max_y = 3
+    max_x = len(height_map)  
+    max_y = len(height_map[0]) 
 
     for x in range(1, max_x):
         for y in range(1, max_y):
@@ -278,17 +275,30 @@ def stitch_base(output_file, height_map):
 
     base = 0 - MODEL_DEPTH - Z_MIN   
 
+    # min array index for x
     x_min = 0    
-    x_max = len(height_map) -1 
+
+    # max array index for x
+    x_max = len(height_map) -1
+    
+    # min array index for y
     y_min = 0
+
+    # max array index for y
     y_max = len(height_map[0]) -1
+
+    # SIZE of array for x
+    x_size = len(height_map)
+
+    # SIZE of array for y
+    y_size = len(height_map[0])
 
 
     sx_max = scale_pixel(x_max)
     sy_max = scale_pixel(y_max)
 
     # N and S (4x triangles)
-    for x in range (1, len(height_map)):
+    for x in range (1, x_size):
         sxm1 = scale_pixel(x-1)
         sx = scale_pixel(x)
  
@@ -319,7 +329,7 @@ def stitch_base(output_file, height_map):
 
     
     # W and E
-    for y in range (1, len(height_map[0])):
+    for y in range (1, y_size):
 
         sym1 = scale_pixel(y-1)
         sy = scale_pixel(y)
@@ -349,18 +359,28 @@ def stitch_base(output_file, height_map):
             "zs": [height_map[x_max][y], base, base],
         })
 
-    # close the shape with two triangles on the bottom
-    facet(output_file, {
-        "xs": [x_min, x_min, sx_max],
-        "ys": [y_min, sy_max, sy_max],
-        "zs": [base, base, base],
-    })
+    # close the bottom - we *MUST* reference each vertex above or we create
+    # a non manifold shape
+    for x in range(1, x_size):
+        for y in range(1, y_size):
+            
+            sx = scale_pixel(x)
+            sxm1 = scale_pixel(x-1)
+            
+            sy = scale_pixel(y)
+            sym1 = scale_pixel(y-1)
 
-    facet(output_file, {
-        "xs": [x_min, sx_max, sx_max],
-        "ys": [y_min, sy_max, y_min],
-        "zs": [base, base, base],
-    })
+            facet(output_file, {
+                "xs": [sx, sx, sxm1],
+                "ys": [sy, sym1, sym1],
+                "zs": [base, base, base],
+            })
+
+            facet(output_file, {
+                "xs": [sx, sxm1, sxm1],
+                "ys": [sy, sym1, sy ],
+                "zs": [base, base, base],
+            })
 
 
 
@@ -408,24 +428,12 @@ def facet(output_file, triangle):
     output_file.write("endfacet\n")
 
 
-def triangle(coords, k1, k2, k3):
-    """
-    construct a map of ordered coordinates
-    """
-    return {
-        "xs": [coords[k1]["x"], coords[k2]["x"], coords[k3]["x"]], 
-        "ys": [coords[k1]["y"], coords[k2]["y"], coords[k3]["y"]],
-        "zs": [coords[k1]["z"], coords[k2]["z"], coords[k3]["z"]],
-    }
-
 def scale_pixel(n):
     return n * PIXEL_RATIO
 
 def link_pixel(output_file, height_map, x, y):
     """
-    create 8 triangles from this pixel to the surrounding pixels
-    
-    triangles need to be wound counter clockwise
+    Link this pixel to the one at x-1,y-1 to create two triangles (triangle mesh)
     """
 
     # compute the coordinates for reference later
@@ -434,57 +442,26 @@ def link_pixel(output_file, height_map, x, y):
     sxm1 = scale_pixel(x-1)
     # scaled x
     sx = scale_pixel(x)
-    # scaled x + 1
-    sxp1 = scale_pixel(x+1)
     
     # scaled y - 1
     sym1 = scale_pixel(y-1)
     # scaled y
     sy = scale_pixel(y)
-    # scaled y + 1
-    syp1 = scale_pixel(y+1)
-
-    coords = {
-        "n":    {"x": sx,    "y": syp1,   "z": height_map[x][y+1]},
-        "ne":   {"x": sxp1,  "y": syp1,   "z": height_map[x+1][y+1]},
-        "e":    {"x": sxp1,  "y": sy,     "z": height_map[x+1][y]},
-        "se":   {"x": sxp1,  "y": sym1,   "z": height_map[x+1][y-1]},
-        "s":    {"x": sx,    "y": sym1,   "z": height_map[x][y-1]},
-        "sw":   {"x": sxm1,  "y": sym1,   "z": height_map[x-1][y-1]},
-        "w":    {"x": sxm1,  "y": sy,     "z": height_map[x-1][y]},
-        "nw":   {"x": sxm1,  "y": syp1,   "z": height_map[x-1][y+1]},
-        "p":    {"x": sx,    "y": sy,     "z": height_map[x][y]},
-    }
 
 
-    # North pair
-    # NNW
-    facet(output_file, triangle(coords, "p", "n", "nw"))
+    facet(output_file, {
+        "xs": [sx, sxm1, sxm1],
+        "ys": [sy, sy, sym1],
+        "zs": [height_map[x][y], height_map[x-1][y], height_map[x-1][y-1]],
+    })
 
-    # NNE
-    facet(output_file, triangle(coords, "p", "ne", "n"))
-    
-    # East pair
-    # ENE
-    facet(output_file, triangle(coords, "p", "e", "ne"))
+    facet(output_file, {
+        "xs": [sx, sxm1, sx],
+        "ys": [sy, sym1, sym1],
+        "zs": [height_map[x][y], height_map[x-1][y-1], height_map[x][y-1]],
+    })
 
-    # ESE
-    facet(output_file, triangle(coords, "p", "se", "e"))
 
-    # South pair
-    # SSW
-    facet(output_file, triangle(coords, "p", "sw", "s"))
-
-    # SSE
-    facet(output_file, triangle(coords, "p", "s", "se"))
-
-    # West pair
-    # WSW
-    facet(output_file, triangle(coords, "p", "w", "sw"))
-
-    # WNW
-    facet(output_file, triangle(coords, "p", "nw", "w"))
-    
 main()
 
 
