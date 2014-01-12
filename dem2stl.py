@@ -359,20 +359,33 @@ def facet(output_file, triangle):
 
      
     # calculate triangle normals - see:  http://www.mathsisfun.com/algebra/vectors-cross-product.html
-    ax = triangle["xs"][0] - triangle["xs"][2]
-    ay = triangle["ys"][0] - triangle["xs"][2]
-    az = triangle["zs"][0] - triangle["xs"][2]
+    # http://math.stackexchange.com/questions/305642/how-to-find-surface-normal-of-a-triangle
+    #
+    # The cross product of two sides of the triangle equals the surface normal. So, if 
+    # V = P2 - P1 and W = P3 - P1, and N is the surface normal, then:
+    #
+    # Nx=(Vy*Wz)-(Vz*Wy)
+    # Ny=(Vz*Wx)-(Vx*Wz)
+    # Nz=(Vx*Wy)-(Vy*Wx)
 
-    bx = triangle["xs"][0] - triangle["xs"][1]
-    by = triangle["ys"][0] - triangle["ys"][1]
-    bz = triangle["zs"][0] - triangle["zs"][1]
+    vx = triangle["xs"][1] - triangle["xs"][0]
+    vy = triangle["ys"][1] - triangle["ys"][0]
+    vz = triangle["zs"][1] - triangle["zs"][0]
 
-    nx = (ay * bz) - (az * by)
-    ny = (az * bx) - (ax * bz)
-    nz = (ax * by) - (ay * bx)
+    wx = triangle["xs"][2] - triangle["xs"][0]
+    wy = triangle["ys"][2] - triangle["ys"][0]
+    wz = triangle["zs"][2] - triangle["zs"][0]
 
-    # extra credit - normal should be of unit length..
 
+    nx = (vy * wz) - (vz * wy)
+    ny = (vz * wx) - (vx * wz)
+    nz = (vx * wy) - (vy * wx)
+
+    # normal should be of unit length..
+    n_sum = nx + ny + nz
+    nx = nx / n_sum
+    ny = ny / n_sum
+    nz = nz / n_sum
 
     output_file.write("facet normal %f %f %f\n" % (nx, ny, nz))
     output_file.write("\touter loop\n")
