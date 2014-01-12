@@ -35,6 +35,7 @@ MODEL_DEPTH=6
 Z_MIN=0
 Z_MAX=0
 LINEAR_RATIO=3
+FACE_ONLY=False
 
 def main():
     global R_RATIO
@@ -46,7 +47,8 @@ def main():
     global RESAMPLE_SQUARED
     global MODEL_DEPTH
     global LINEAR_RATIO
-
+    global FACE_ONLY
+    
     logging.info("DEM TO STL")
     parser = argparse.ArgumentParser(description='DEM (Digital Elevation Model) to STL (3D printer) conversion')
     # input file
@@ -84,6 +86,11 @@ def main():
     parser.add_argument('--model-depth', dest='model_depth', action='store',
             help='minimum depth of model', type=int, default=MODEL_DEPTH)
 
+
+    # face only
+    parser.add_argument('--face-only', dest='face_only', action='store_true',
+            help='only create the height map face - do not make a solid', default=FACE_ONLY)
+
     # debug mode
     parser.add_argument('--debug', dest='debug', action='store_true',
             help='enable debug messages', default=False)
@@ -98,6 +105,7 @@ def main():
     RESAMPLE_SQUARED = math.pow(RESAMPLE_STEP,2)
     MODEL_DEPTH = args.model_depth
     LINEAR_RATIO = args.linear_ratio
+    FACE_ONLY = args.face_only
 
     if (args.debug):
         print("enabling debug mode...")
@@ -241,12 +249,16 @@ def convert_height_map(height_map, output_filename):
     max_y = len(height_map[0]) - 1
 
 
+    max_x = 3
+    max_y = 3
+
     for x in range(1, max_x):
         for y in range(1, max_y):
             link_pixel(output_file, height_map, x, y)
 
     # link the N, S, E, W sides to zero height (the previously unprocessed border)
-    stitch_base(output_file, height_map)
+    if not FACE_ONLY:
+        stitch_base(output_file, height_map)
 
     stl_footer(output_file)
 
@@ -387,11 +399,11 @@ def facet(output_file, triangle):
     ny = ny / n_sum
     nz = nz / n_sum
 
-    output_file.write("facet normal %f %f %f\n" % (nx, ny, nz))
+    output_file.write("facet normal %G %G %G\n" % (nx, ny, nz))
     output_file.write("\touter loop\n")
-    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][0], triangle["ys"][0], triangle["zs"][0]))
-    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][1], triangle["ys"][1], triangle["zs"][1]))
-    output_file.write("\t\tvertex %f %f %f\n" % (triangle["xs"][2], triangle["ys"][2], triangle["zs"][2]))
+    output_file.write("\t\tvertex %G %G %G\n" % (triangle["xs"][0], triangle["ys"][0], triangle["zs"][0]))
+    output_file.write("\t\tvertex %G %G %G\n" % (triangle["xs"][1], triangle["ys"][1], triangle["zs"][1]))
+    output_file.write("\t\tvertex %G %G %G\n" % (triangle["xs"][2], triangle["ys"][2], triangle["zs"][2]))
     output_file.write("\tendloop\n")
     output_file.write("endfacet\n")
 
