@@ -195,10 +195,11 @@ def average(values, source_x_dim, source_y_dim, resampled_x, resampled_y):
     
     # take the mean of the pixels indicated by resample size
     v=0
+    hits = 0
     for x in range(x_min, x_max):
         for y in range(y_min, y_max):
             v += values[x][y]     
-
+            hits = hits + 1
     v = v / RESAMPLE_SQUARED
     return v
 
@@ -207,10 +208,11 @@ def resample(values):
     source_x_dim = len(values)
     source_y_dim = len(values[0])
 
-    x_dim = int(round(source_x_dim / RESAMPLE_STEP))
-    y_dim = int(round(source_y_dim / RESAMPLE_STEP))
+    # -1 because the data we sample 
+    x_dim = int(round(source_x_dim / RESAMPLE_STEP)) 
+    y_dim = int(round(source_y_dim / RESAMPLE_STEP)) 
 
-    logging.debug("resample to %f x %f" % (x_dim, y_dim))
+    logging.debug("resample to %d x %d" % (x_dim, y_dim))
 
     resampled = numpy.empty((x_dim, y_dim))
     for x in range(0, x_dim):
